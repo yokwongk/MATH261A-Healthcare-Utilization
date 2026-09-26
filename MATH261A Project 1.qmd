@@ -1,0 +1,209 @@
+---
+title: "Healthcare Utilization & Median Income in CA"
+subtitle: "MATH 261A Paper 1"
+author: "Aroonrassamee Wongkeaitaroon"
+date: today
+date-format: long
+format:
+  pdf:
+    documentclass: article
+    geometry:
+      - top=1in
+      - bottom=1in
+      - left=1in
+      - right=1in
+    include-in-header:
+      text: |
+        \usepackage{amsmath}
+        \usepackage{hyperref}
+number-sections: true
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Share of Suppressed"
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+url <- "https://data.chhs.ca.gov/dataset/aea55da9-a322-49e9-b187-a216dc4e460d/resource/ea58d9aa-e4e6-46d6-8815-3442960873c0/download/services_rpt_data-service-category.csv"
+df <- read.csv(url)
+mmhi <- read.csv("C:/Users/aroon/OneDrive - sjsu.edu/MATH 261 A/mmhi.csv")
+
+
+
+# Subset service count data for 2023 for each county 
+county_summary <- df %>%
+  filter(reporting_year== 2023) %>%
+  group_by(county_name) %>%
+  summarise(
+    com_service_count = sum(service_count[payer_type == "Commercial"], na.rm =TRUE), 
+    total_service_count = sum(service_count, na.rm= TRUE), 
+    com_percent = (com_service_count/total_service_count) * 100
+  )
+
+#Clean and Join with Median income by county 2020-2024 
+
+mmhi_cleaned <- mmhi%>%
+  mutate(
+    county_name = str_remove(county_name, " County.*"),
+    median_income = parse_number(median_income)
+    )
+ data<- county_summary %>%
+  left_join(mmhi_cleaned, by = "county_name")
+ 
+#Regression
+lm_fit <- lm(data$com_percent ~ data$median_income)
+```
+
+
+# Introduction
+
+Over the past decades, universal healthcare remains a focus of public policy and political debate in the United States. A primary factor this attention is the steady increase in premium burdens in both private health insurance and public Medicare plans over time, () respectively. In California, health coverage by multiple payer systems: 53.4% are covered by commercial insurance, 27.8% are enrolled in Medi-Cal, 12.1% receive Medicare benefits, and the rest have other types of coverage or are uninsured.
+
+Healthcare utilization is not even among commercially insured population. Service utilization is conditioned by economic factors such as county-level median household income. The privately insured population still have different levels of barriers within them. Examining the relationship between commercial service utilization percentage across California counties provides insights into how regional economic landscape correlate to healthcare utilization within privately insured population.
+
+Prior research examined disparities between publicly and privately insured populations. However, this paper examines how county level economic prosperity correlate with healthcare utilization within the insured population across California. We performed a single linear regression analysis using county-level median household income data with state health utilization records. The remainder of this paper structures as follows: Section 2 describes our choice of data, Section 3 details the methodology to conduct the analysis, Section 4 presents the results of the regression, and Section 5 will provide implications and further discussion about our findings.
+
+
+# Data
+
+To evaluate commercial insurance utilization, we used total service count from the Health Payment Data (HPD) Services Report from the California Health Care Access and Information. This dataset categorizes data allowed for individuals to be grouped by payer type (Commercial, Medicare, Medi-Cal), and county. Total service count was selected over member county to capture healthcare utilization rather than coverage distribution.
+
+For each county, services counts were aggregated across payer types for the 2023 reporting year. The response variable, Commercial Utilization Percentage (Y), was computed as the proportion of commercial service counts relative to the total healthcare services counts within a given county. 
+
+$$Y_i = \frac{\text{Commercial Service Count}_i}{\text{Total Service Count}_i} \times 100 $$
+
+Furthermore, to measure local conditions, we used the 2020-2024 average median household income data from NIH HD Pulse database. The average data was chosen over just the single year 2023 median household income because this survey only feature counties with population over 65,000 which would truncate the sample size needed for this analysis. 
+
+# Methods
+
+We evaluate the relationship between county economic status and commercial healthcare utilization using a simple linear regression model: 
+
+$$Y_i = \beta_0 +\beta_1 X_i + \varepsilon_i$$
+
+- $Y_i$: Commercial Utilization percentage by County (%)
+- $X_i$: Median household income by County ($)
+- $\beta_0$: Expected commercial utilization percentage when median household income is $0. 
+- $\beta_1$: Expected change in commercial utilization percentage by county for every one dollar increase in median household income.  
+- $\varepsilon_i$: Random error term, assuming $\varepsilon_i \overset{\text{iid}}{\sim} N (0, \sigma^2)$
+
+The model parameters were estimated using the lm() function in R. 
+
+## Assumptions and limitations
+For the validity of this model, several assumptions were made:
+
+1. **Independence of errors:** While cross-county economies can have influences on each other in practice, for this model we assume that they are independent. 
+2. **Equality of variance in errors:** As demonstrated in @fig-assumptions-1, the residual vs predictor plot displayed random scatter around the horizontal axis and no funneling behavior characteristic of heteroskedastic errors. This supports the assumption that error variance is constant.
+3. **Normality of errors:** The Normal Q-Q plot demonstrates that sample residuals line up with theoretical normal distribution line, supporting error normality.
+
+
+```{r}
+#| label: fig-assumptions
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Assumption plots for linear regression model."
+#| fig-subcap: 
+#|   - "Residuals vs Predictor"
+#|   - "Normal Q-Q Plot"
+#| fig-height: 4
+#| fig-width: 8
+
+# Set up 1-row, 2-column layout with standard margins
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 2.5, 1))
+
+# 1. Residuals vs Predictor Plot
+plot(data$median_income, lm_fit$residuals, 
+     xlab = "Median Household Income ($)", 
+     ylab = "Residuals", 
+     main = "Residuals vs Predictor",
+     pch = 19, col = "black")
+abline(h = 0, lty = 2, col = "red", lwd = 1.5)
+
+# 2. Normal Q-Q Plot
+qqnorm(lm_fit$residuals, 
+       main = "Normal Q-Q Plot",
+       pch = 19, col = "black")
+qqline(lm_fit$residuals, col = "red", lwd = 1.5)
+
+# Reset layout to default single plot
+par(mfrow = c(1, 1))
+```
+
+
+Another limitation to this data is that some data were suppressed, as in we could see the payer type but the service count was not shown. Figure 2 shows the distribution of number of suppressed ID's by payer type. Since the distribution is not uniform, and Medicare takes up the higher proportion of suppressed data, commercial payer type percentage may be higher than in reality.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Share of Suppressed Rows by the three payer types: Commercial, Medi-Cal, Medicare, in percentages"
+
+
+#Suppression ID = Y
+suppressed_summary <- df %>%
+  filter(reporting_year == 2023, suppression_ind == "Y") %>%
+  group_by(payer_type) %>%
+  summarise(suppressed_rows = n(), .groups = "drop") %>% 
+  mutate(sup_percent = (suppressed_rows / sum(suppressed_rows)) * 100)
+  
+#PLOT 
+ggplot(suppressed_summary, aes(x = payer_type, y = sup_percent)) +
+  geom_col(width = 0.4, fill = "black") +
+  geom_text(aes(label = paste0(round(sup_percent, 1), "%")), 
+            vjust = -0.6, 
+            size = 3.5) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title = "Share of Suppressed Rows by Payer Type",
+       x = "Payer Type",
+       y = "Percentage (%)") +
+  theme_classic() 
+
+```
+
+
+
+# Results 
+
+The fitted linear regression line of commercial utilization percentage vs. county median household income is displayed in @fig-regression. 
+
+```{r}
+#| label: fig-regression
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Commercial Insurance Utilization vs Median Household Income"
+#| fig-height: 3.5
+#| fig-pos: "H"
+
+plot(data$median_income, data$com_percent, 
+     xlab = "Household Median Income ($)", 
+     ylab = "Commercial Insurance Percentage (%)", 
+     main = "Commercial Insurance Utilization vs Median Household Income")
+abline(lm_fit, col = "darkblue", lwd = 1.5)
+```
+
+
+The estimated slope parameter is $2.810 \times 10^{-4}$, suggesting that for every \$1 increase in median household income, the percentage of commercial utilization expected to increase by $2.810 \times 10^{-4}\%$. Or, for every \$10000  increase in median household income, the commercial utilization percentage is expected to increase by 2.8% (p=$5.16*10^{-14}$).
+
+The estimated intercept parameter is 0.4562 which is the expected Commercial utilization percentage at $0 median household income. 
+
+# Discussion
+
+The results demonstrate a positive relationship between county-level median household income and commercial healthcare utilization. Counties with higher median incomes exhibit systematically larger proportions of commercial healthcare service claims. This suggests that among the privately insured population, regional economic states translates to higher service utlization.this can be caused by greater affordability and better coverage. However, a critical limitation of this analysis stems from the data suppression. As shown in @fig-suppressed, the data suppression is not uniform among the three payer categories. Therefore, this could lead to the inflation of the commercial service counts.
+
+
+# References 
+https://www.frontiersin.org/journals/public-health/articles/10.3389/fpubh.2024.1365877/full
+
+https://www.mdpi.com/2079-8954/14/2/209
+
+
+https://www.chcf.org/wp-content/uploads/2025/09/CoveringUninsured_ConsiderationsPrepareCoverageLoss.pdf
+
+https://usafacts.org/answers/how-many-people-are-on-medicaid-in-the-us/state/california/
+
